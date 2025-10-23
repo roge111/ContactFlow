@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Экспорт контактов</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        select, input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 12px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background: #218838;
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .message {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            display: none;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #007bff;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Экспорт контактов</h1>
+        
+        <div id="message" class="message"></div>
+        <div id="loading" class="loading">Подготовка файла для скачивания...</div>
+        
+        <form id="exportForm">
+            <div class="form-group">
+                <label for="sort_type">Сортировка:</label>
+                <select id="sort_type" name="sort_type">
+                    <option value="phone_asc">Телефон (по возрастанию)</option>
+                    <option value="phone_desc">Телефон (по убыванию)</option>
+                    <option value="email_asc">Email (по возрастанию)</option>
+                    <option value="email_desc">Email (по убыванию)</option>
+                    <option value="name_asc">Имя (по возрастанию)</option>
+                    <option value="name_desc">Имя (по убыванию)</option>
+                    <option value="last_name_asc">Фамилия (по возрастанию)</option>
+                    <option value="last_name_desc">Фамилия (по убыванию)</option>
+                    <option value="company_asc">Компания (по возрастанию)</option>
+                    <option value="company_desc">Компания (по убыванию)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="count">Количество контактов:</label>
+                <input type="number" id="count" name="count" value="100" min="1" max="1000" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="file_type">Формат файла:</label>
+                <select id="file_type" name="file_type">
+                    <option value="csv">CSV</option>
+                    <option value="excel">Excel</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <button type="submit" id="submitBtn" class="btn">Экспортировать контакты</button>
+            </div>
+        </form>
+        
+        <a href="/" class="back-link">← На главную</a>
+    </div>
+
+    <script>
+        document.getElementById('exportForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const messageDiv = document.getElementById('message');
+            const loadingDiv = document.getElementById('loading');
+            
+            // Показываем загрузку
+            submitBtn.disabled = true;
+            loadingDiv.style.display = 'block';
+            messageDiv.style.display = 'none';
+            
+            const formData = new FormData(this);
+            
+            fetch('/export/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.blob().then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        
+                        // Получаем имя файла из заголовков
+                        const contentDisposition = response.headers.get('content-disposition');
+                        let filename = 'contacts_export.csv';
+                        if (contentDisposition) {
+                            const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                            if (filenameMatch) {
+                                filename = filenameMatch[1];
+                            }
+                        }
+                        
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        
+                        showMessage('Файл успешно скачан!', 'success');
+                    });
+                } else {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Ошибка при экспорте');
+                    });
+                }
+            })
+            .catch(error => {
+                showMessage(`Ошибка: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                submitBtn.disabled = false;
+                loadingDiv.style.display = 'none';
+            });
+        });
+        
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = text;
+            messageDiv.className = `message ${type}`;
+            messageDiv.style.display = 'block';
+        }
+        
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
+</body>
+</html>
